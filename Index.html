@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reserva tu cita - Colega Barbers</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-center items-center p-4">
+
+  <div class="max-w-md w-full bg-slate-800 rounded-2xl shadow-2xl border border-slate-700 p-6">
+    <!-- Encabezado -->
+    <div class="text-center mb-6">
+      <h1 class="text-3xl font-bold tracking-tight text-amber-500 uppercase">Colega Barbers</h1>
+      <p class="text-slate-400 text-sm mt-1">Agenda tu cita para motilarte</p>
+    </div>
+
+    <!-- Formulario -->
+    <form id="booking-form" class="space-y-4">
+      <!-- Nombre -->
+      <div>
+        <label for="client_name" class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Nombre completo</label>
+        <input type="text" id="client_name" required placeholder="Ej. Juan Pérez" 
+               class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition">
+      </div>
+
+      <!-- Teléfono -->
+      <div>
+        <label for="client_phone" class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Teléfono / WhatsApp</label>
+        <input type="tel" id="client_phone" required placeholder="Ej. 3105457657" 
+               class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition">
+      </div>
+
+      <!-- Tipo de Corte -->
+      <div>
+        <label for="cut_type" class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Tipo de Servicio</label>
+        <select id="cut_type" required onchange="actualizarPrecio()"
+                class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-amber-500 transition">
+          <option value="cb" data-price="20000.00">Corte Básico - $20.000</option>
+          <option value="cb_barba" data-price="28000.00">Corte + Barba - $28.000</option>
+          <option value="barba" data-price="12000.00">Solo Barba - $12.000</option>
+        </select>
+      </div>
+
+      <!-- Barbero -->
+      <div>
+        <label for="barber_username" class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Barbero</label>
+        <select id="barber_username" required 
+                class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-amber-500 transition">
+          <option value="9898">Barbero Principal (9898)</option>
+        </select>
+      </div>
+
+      <!-- Fecha -->
+      <div>
+        <label for="appointment_date" class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Selecciona la Fecha</label>
+        <input type="date" id="appointment_date" required 
+               class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-amber-500 transition">
+      </div>
+
+      <!-- Horarios Disponibles -->
+      <div>
+        <label class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">Horarios disponibles</label>
+        <div id="loading-slots" class="text-center text-sm text-amber-400 py-3 hidden">Consultando agenda...</div>
+        <div id="no-date-msg" class="text-center text-sm text-slate-500 py-3">Elige una fecha para cargar los horarios.</div>
+        <div id="time-slots" class="grid grid-cols-3 gap-2 hidden"></div>
+      </div>
+
+      <!-- Botón de Confirmación -->
+      <button type="submit" id="btn-submit" disabled 
+              class="w-full bg-amber-500 hover:bg-amber-600 disabled:bg-slate-700 disabled:text-slate-500 disabled:cursor-not-allowed text-slate-950 font-bold py-3 rounded-lg transition mt-4">
+        Confirmar Cita
+      </button>
+    </form>
+  </div>
+
+  <script>
+    // Configuración de Supabase
+    const SUPABASE_URL = 'https://hetqsuggbaygqvrdscdq.supabase.co/rest/v1/';
+    const SUPABASE_ANON_KEY = 'sb_publishable_66mZf73CWOIxxQkpdCV-8w_uSHP206H';
+    const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    // Horarios prestablecidos
+    const HORARIOS_DISPONIBLES = [
+      '08:00', '09:00', '10:00', '11:00', '12:00', 
+      '14:00', '15:00', '16:00', '17:00', '18:00'
+    ];
+
+    let horaSeleccionada = null;
+    let precioSeleccionado = "20000.00";
+
+    const inputFecha = document.getElementById('appointment_date');
+    const containerSlots = document.getElementById('time-slots');
+    const loadingMsg = document.getElementById('loading-slots');
+    const noDateMsg = document.getElementById('no-date-msg');
+    const btnSubmit = document.getElementById('btn-submit');
+    const form = document.getElementById('booking-form');
+
+    // Deshabilitar fechas pasadas
+    inputFecha.min = new Date().toISOString().split('T')[0];
+
+    function actualizarPrecio() {
+      const selectCut = document.getElementById('cut_type');
+      const selectedOption = selectCut.options[selectCut.selectedIndex];
+      precioSeleccionado = selectedOption.getAttribute('data-price');
+    }
+
+    // Consultar disponibilidad según la fecha
+    inputFecha.addEventListener('change', async (e) => {
+      const fecha = e.target.value;
+      if (!fecha) return;
+
+      horaSeleccionada = null;
+      btnSubmit.disabled = true;
+      noDateMsg.classList.add('hidden');
+      containerSlots.classList.add('hidden');
+      loadingMsg.classList.remove('hidden');
+
+      try {
+        const { data: citas, error } = await supabase
+          .from('citas')
+          .select('appointment_time')
+          .eq('appointment_date', fecha);
+
+        if (error) throw error;
+
+        // Extraer horas reservadas formateadas a HH:MM
+        const ocupadas = citas.map(c => c.appointment_time.substring(0, 5));
+        const libres = HORARIOS_DISPONIBLES.filter(hora => !ocupadas.includes(hora));
+
+        renderSlots(libres);
+      } catch (err) {
+        console.error('Error al consultar horarios:', err);
+        alert('Ocurrió un error al verificar los horarios.');
+      } finally {
+        loadingMsg.classList.add('hidden');
+      }
+    });
+
+    function renderSlots(libres) {
+      containerSlots.innerHTML = '';
+      
+      if (libres.length === 0) {
+        containerSlots.innerHTML = '<p class="col-span-3 text-center text-sm text-red-400 py-2">Sin cupos para esta fecha.</p>';
+      } else {
+        libres.forEach(hora => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.textContent = hora;
+          btn.className = 'py-2 px-3 text-sm rounded-lg border border-slate-700 bg-slate-900 text-slate-300 hover:border-amber-500 transition font-medium';
+          
+          btn.onclick = () => {
+            document.querySelectorAll('#time-slots button').forEach(b => {
+              b.classList.remove('bg-amber-500', 'text-slate-950', 'border-amber-500', 'font-bold');
+              b.classList.add('bg-slate-900', 'text-slate-300');
+            });
+            btn.classList.add('bg-amber-500', 'text-slate-950', 'border-amber-500', 'font-bold');
+            btn.classList.remove('bg-slate-900', 'text-slate-300');
+
+            horaSeleccionada = hora;
+            btnSubmit.disabled = false;
+          };
+
+          containerSlots.appendChild(btn);
+        });
+      }
+
+      containerSlots.classList.remove('hidden');
+    }
+
+    // Insertar el registro en la tabla `citas`
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      if (!horaSeleccionada) {
+        alert('Selecciona una hora disponible.');
+        return;
+      }
+
+      btnSubmit.disabled = true;
+      btnSubmit.textContent = 'Procesando reserva...';
+
+      const payload = {
+        client_name: document.getElementById('client_name').value.trim(),
+        client_phone: document.getElementById('client_phone').value.trim(),
+        cut_type: document.getElementById('cut_type').value,
+        price: precioSeleccionado,
+        appointment_date: inputFecha.value,
+        appointment_time: horaSeleccionada,
+        barber_username: document.getElementById('barber_username').value
+      };
+
+      try {
+        const { error } = await supabase.from('citas').insert([payload]);
+
+        if (error) throw error;
+
+        alert(`¡Cita agendada correctamente para el ${payload.appointment_date} a las ${payload.appointment_time}!`);
+        form.reset();
+        containerSlots.classList.add('hidden');
+        noDateMsg.classList.remove('hidden');
+        horaSeleccionada = null;
+      } catch (err) {
+        console.error('Error al guardar:', err);
+        alert('No se pudo completar la reserva. Intenta nuevamente.');
+      } finally {
+        btnSubmit.textContent = 'Confirmar Cita';
+        btnSubmit.disabled = true;
+      }
+    });
+  </script>
+</body>
+</html>
