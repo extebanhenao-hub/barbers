@@ -4,7 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Reserva tu cita - Colega Barbers</title>
+  <!-- Tailwind CSS -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Cliente oficial de Supabase -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body class="bg-slate-900 text-slate-100 min-h-screen flex flex-col justify-center items-center p-4">
@@ -21,25 +23,25 @@
       <!-- Nombre -->
       <div>
         <label for="client_name" class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Nombre completo</label>
-        <input type="text" id="client_name" required placeholder="Ej. Juan Pérez" 
+        <input type="text" id="client_name" required placeholder="Ej. Juan Pérez"
                class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition">
       </div>
 
       <!-- Teléfono -->
       <div>
         <label for="client_phone" class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Teléfono / WhatsApp</label>
-        <input type="tel" id="client_phone" required placeholder="Ej. 3105457657" 
+        <input type="tel" id="client_phone" required placeholder="Ej. 3105457657"
                class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white placeholder-slate-500 focus:outline-none focus:border-amber-500 transition">
       </div>
 
-      <!-- Tipo de Corte -->
+      <!-- Tipo de Servicio -->
       <div>
         <label for="cut_type" class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Tipo de Servicio</label>
         <select id="cut_type" required onchange="actualizarPrecio()"
                 class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-amber-500 transition">
-          <option value="cb" data-price="15000.00">Corte Básico - $15.000</option>
-          <option value="cb_barba" data-price="20000.00">Corte + Barba - $20.000</option>
-          <option value="barba" data-price="5000.00">Solo Barba - $5.000</option>
+          <option value="Corte Básico" data-price="15000.00">Corte Básico - $15.000</option>
+          <option value="Corte + Barba" data-price="20000.00">Corte + Barba - $20.000</option>
+          <option value="Solo Barba" data-price="5000.00">Solo Barba - $5.000</option>
         </select>
       </div>
 
@@ -55,7 +57,7 @@
       <!-- Fecha -->
       <div>
         <label for="appointment_date" class="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-1">Selecciona la Fecha</label>
-        <input type="date" id="appointment_date" required 
+        <input type="date" id="appointment_date" required
                class="w-full bg-slate-900 border border-slate-700 rounded-lg px-4 py-2.5 text-white focus:outline-none focus:border-amber-500 transition">
       </div>
 
@@ -76,16 +78,33 @@
   </div>
 
   <script>
-    // Horarios prestablecidos
+    // ==========================================
+    // 1. CONFIGURA TUS CREDENCIALES DE SUPABASE
+    // ==========================================
+    const SUPABASE_URL = 'https://hetqsuggbaygqvrdscdq.supabase.co/rest/v1/'; // <--- Pon tu URL aquí
+    const SUPABASE_ANON_KEY = 'sb_publishable_66mZf73CWOIxxQkpdCV-8w_uSHP206H';                  // <--- Pon tu Anon Key aquí
+
+    // Inicialización del cliente Supabase
+    let supabaseClient = null;
+    try {
+      if (window.supabase && SUPABASE_URL.startsWith('http')) {
+        supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+      }
+    } catch (e) {
+      console.warn('Supabase no inicializado todavía:', e);
+    }
+
+    // Horarios preestablecidos
     const HORARIOS_DISPONIBLES = [
       '08:00', '09:00', '10:00', '11:00', '12:00', 
       '14:00', '15:00', '16:00', '17:00', '18:00'
     ];
 
     let horaSeleccionada = null;
-    let precioSeleccionado = "20000.00";
+    let precioSeleccionado = 15000.00;
 
     const inputFecha = document.getElementById('appointment_date');
+    const selectBarbero = document.getElementById('barber_username');
     const containerSlots = document.getElementById('time-slots');
     const loadingMsg = document.getElementById('loading-slots');
     const noDateMsg = document.getElementById('no-date-msg');
@@ -98,13 +117,18 @@
     function actualizarPrecio() {
       const selectCut = document.getElementById('cut_type');
       const selectedOption = selectCut.options[selectCut.selectedIndex];
-      precioSeleccionado = selectedOption.getAttribute('data-price');
+      precioSeleccionado = parseFloat(selectedOption.getAttribute('data-price') || 0);
     }
 
     // Consultar disponibilidad según la fecha
     inputFecha.addEventListener('change', async (e) => {
       const fecha = e.target.value;
-      if (!fecha) return;
+      if (!fecha) {
+        noDateMsg.classList.remove('hidden');
+        containerSlots.classList.add('hidden');
+        btnSubmit.disabled = true;
+        return;
+      }
 
       horaSeleccionada = null;
       btnSubmit.disabled = true;
@@ -112,25 +136,33 @@
       containerSlots.classList.add('hidden');
       loadingMsg.classList.remove('hidden');
 
-      try {
-        const { data: citas, error } = await supabase
-          .from('citas')
-          .select('appointment_time')
-          .eq('appointment_date', fecha);
+      let libres = [...HORARIOS_DISPONIBLES];
 
-        if (error) throw error;
+      // Consultar citas en Supabase si está disponible
+      if (supabaseClient) {
+        try {
+          const barbero = selectBarbero ? selectBarbero.value : '';
+          let query = supabaseClient
+            .from('citas')
+            .select('appointment_time')
+            .eq('appointment_date', fecha);
 
-        // Extraer horas reservadas formateadas a HH:MM
-        const ocupadas = citas.map(c => c.appointment_time.substring(0, 5));
-        const libres = HORARIOS_DISPONIBLES.filter(hora => !ocupadas.includes(hora));
+          if (barbero) {
+            query = query.eq('barber_username', barbero);
+          }
 
-        renderSlots(libres);
-      } catch (err) {
-        console.error('Error al consultar horarios:', err);
-        alert('Ocurrió un error al verificar los horarios.');
-      } finally {
-        loadingMsg.classList.add('hidden');
+          const { data: citas, error } = await query;
+          if (!error && citas) {
+            const ocupadas = citas.map(c => (c.appointment_time || '').substring(0, 5));
+            libres = HORARIOS_DISPONIBLES.filter(hora => !ocupadas.includes(hora));
+          }
+        } catch (err) {
+          console.warn('Aviso: Cargando horarios sin filtro de base de datos:', err);
+        }
       }
+
+      loadingMsg.classList.add('hidden');
+      renderSlots(libres);
     });
 
     function renderSlots(libres) {
@@ -152,24 +184,20 @@
             });
             btn.classList.add('bg-amber-500', 'text-slate-950', 'border-amber-500', 'font-bold');
             btn.classList.remove('bg-slate-900', 'text-slate-300');
-
             horaSeleccionada = hora;
             btnSubmit.disabled = false;
           };
-
           containerSlots.appendChild(btn);
         });
       }
-
       containerSlots.classList.remove('hidden');
     }
 
-    // Insertar el registro en la tabla `citas`
+    // Insertar el registro en la tabla citas
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
-
       if (!horaSeleccionada) {
-        alert('Selecciona una hora disponible.');
+        alert('Por favor, selecciona una hora disponible.');
         return;
       }
 
@@ -187,8 +215,11 @@
       };
 
       try {
-        const { error } = await supabase.from('citas').insert([payload]);
+        if (!supabaseClient) {
+          throw new Error('Configura las credenciales de Supabase en Index.html');
+        }
 
+        const { error } = await supabaseClient.from('citas').insert([payload]);
         if (error) throw error;
 
         alert(`¡Cita agendada correctamente para el ${payload.appointment_date} a las ${payload.appointment_time}!`);
@@ -198,14 +229,12 @@
         horaSeleccionada = null;
       } catch (err) {
         console.error('Error al guardar:', err);
-        alert('No se pudo completar la reserva. Intenta nuevamente.');
+        alert('Error al agendar: ' + (err.message || 'Inténtalo de nuevo'));
       } finally {
         btnSubmit.textContent = 'Confirmar Cita';
         btnSubmit.disabled = true;
       }
     });
   </script>
-  <!-- Cliente oficial de Supabase para la Web -->
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </body>
 </html>
