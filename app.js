@@ -1,64 +1,43 @@
-// 1. Inicializar cliente de Supabase con tus credenciales
+// 1. Inicializar cliente Supabase
 const SUPABASE_URL = 'https://TU-PROYECTO.supabase.co';
-const SUPABASE_ANON_KEY = 'TU_SUPABASE_ANON_KEY';
-
+const SUPABASE_ANON_KEY = 'TU_CLAVE_PUBLICA_ANON';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// 2. Escuchar el envío del formulario de reserva
-document.addEventListener('DOMContentLoaded', () => {
-    const bookingForm = document.getElementById('booking-form'); // Asegúrate de que este ID coincida con tu HTML
+// 2. Función que se llama al confirmar la reserva
+async function agendarCitaDesdeWeb(evento) {
+    if (evento) evento.preventDefault();
 
-    if (bookingForm) {
-        bookingForm.addEventListener('submit', handleBookingSubmit);
-    }
-});
+    // Obtener los datos del formulario de tu web
+    const nombreCliente = document.getElementById('nombre').value;
+    const telefonoCliente = document.getElementById('telefono').value;
+    const servicioCorte = document.getElementById('servicio').value; // ej: "Degradado + Barba"
+    const precioCorte = parseFloat(document.getElementById('precio').value || 0);
+    const fecha = document.getElementById('fecha').value; // ej: "2026-09-20"
+    const hora = document.getElementById('hora').value;   // ej: "16:30"
+    
+    // Nombre del barbero (debe coincidir con el usuario en la app Android)
+    const barbero = "esteban"; // o el selector del barbero si el cliente lo elige
 
-async function handleBookingSubmit(event) {
-    event.preventDefault();
+    // 3. Enviar a la tabla 'citas' en Supabase
+    const { data, error } = await supabase
+        .from('citas')
+        .insert([
+            {
+                barber_username: barbero,       // Identificador del barbero
+                client_name: nombreCliente,      // Nombre del cliente
+                client_phone: telefonoCliente,   // Teléfono / WhatsApp
+                cut_type: servicioCorte,         // Tipo de corte o servicio
+                price: precioCorte,              // Precio
+                appointment_date: fecha,         // Fecha
+                appointment_time: hora           // Hora
+            }
+        ]);
 
-    // Obtener botón y mostrar estado de carga
-    const submitBtn = event.target.querySelector('button[type="submit"]');
-    const originalBtnText = submitBtn.innerText;
-    submitBtn.innerText = 'Agendando...';
-    submitBtn.disabled = true;
-
-    // 3. Capturar valores de los campos de tu formulario HTML
-    const barberUsername = document.getElementById('barber-select').value; // Ej: "esteban"
-    const clientName = document.getElementById('client-name').value;
-    const clientPhone = document.getElementById('client-phone').value;
-    const cutType = document.getElementById('service-select').value;
-    const price = parseFloat(document.getElementById('service-price').value || 0);
-    const appointmentDate = document.getElementById('appointment-date').value; // Formato YYYY-MM-DD
-    const appointmentTime = document.getElementById('appointment-time').value; // Formato HH:mm
-
-    try {
-        // 4. Insertar la nueva cita en la tabla "citas" de Supabase
-        const { data, error } = await supabase
-            .from('citas')
-            .insert([
-                {
-                    barber_username: barberUsername,
-                    client_name: clientName,
-                    client_phone: clientPhone,
-                    cut_type: cutType,
-                    price: price,
-                    appointment_date: appointmentDate,
-                    appointment_time: appointmentTime
-                }
-            ]);
-
-        if (error) throw error;
-
-        // Éxito: Notificar al cliente y reiniciar formulario
-        alert('¡Cita agendada con éxito! El barbero ha sido notificado.');
-        event.target.reset();
-
-    } catch (error) {
-        console.error('Error al agendar la cita:', error.message);
-        alert('Hubo un problema al agendar tu cita. Por favor intenta de nuevo.');
-    } finally {
-        // Restaurar estado del botón
-        submitBtn.innerText = originalBtnText;
-        submitBtn.disabled = false;
+    if (error) {
+        console.error('Error al agendar cita:', error.message);
+        alert('Hubo un problema al agendar tu cita: ' + error.message);
+    } else {
+        alert('¡Cita agendada con éxito! Tu barbero ha recibido la notificación.');
+        // Opcional: resetear formulario o mostrar modal de confirmación
     }
 }
