@@ -1,6 +1,6 @@
 // 1. Inicializar cliente Supabase
-const SUPABASE_URL = 'https://TU-PROYECTO.supabase.co';
-const SUPABASE_ANON_KEY = 'TU_CLAVE_PUBLICA_ANON';
+const SUPABASE_URL = 'https://hetqsuggbaygqvrdscdq.supabase.co/rest/v1/';
+const SUPABASE_ANON_KEY = 'sb_publishable_66mZf73CWOIxxQkpdCV-8w_uSHP206H';
 const supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
 // 2. Función que se llama al confirmar la reserva
